@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx prisma *)",
+      "Bash(npx tsc *)",
+      "Bash(npm install *)",
+      "PowerShell(Get-ChildItem \"c:\\\\Projects\\\\Preinscription\\\\preenrollment\\\\app\\\\\\(student\\)\\\\student\" -Recurse -Directory | ForEach-Object { $_.FullName })",
+      "PowerShell(Get-ChildItem \"c:\\\\Projects\\\\Preinscription\\\\preenrollment\\\\app\\\\\\(supervisor\\)\\\\supervisor\" -Recurse -Directory | ForEach-Object { $_.FullName })",
+      "Bash(mkdir -p \"c:/Projects/Preinscription/preenrollment/app/\\(supervisor\\)/supervisor/dossiers\" && mkdir -p \"c:/Projects/Preinscription/preenrollment/app/\\(supervisor\\)/supervisor/dossiers/[id]\" && echo done)",
+      "Bash(git -C \"c:/Projects/Preinscription/preenrollment\" log --oneline -5)",
+      "PowerShell(cd c:\\\\Projects\\\\Preinscription\\\\preenrollment; $env:PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION = \"yes\"; npx prisma db push --force-reset 2>&1 | Select-Object -Last 15)",
+      "Bash(mkdir -p \"c:/Projects/Preinscription/preenrollment/app/api/admin/annees\" && mkdir -p \"c:/Projects/Preinscription/preenrollment/app/api/admin/annees/[id]\" && echo done)",
+      "Bash(mkdir -p \"c:/Projects/Preinscription/preenrollment/app/api/filieres/[id]/capacite\" && echo done)",
+      "Bash(Get-ChildItem c:\\\\Projects\\\\Preinscription\\\\preenrollment -MaxDepth 1 -Filter \"*.md\")",
+      "Bash(Select-Object Name)",
+      "PowerShell(Get-ChildItem \"c:\\\\Projects\\\\Preinscription\\\\preenrollment\" -MaxDepth 1 | Where-Object { $_.Name -match \"README|CHANGELOG|CONTEXT|AGENTS|CLAUDE\" } | Select-Object Name, LastWriteTime)",
+      "Bash(grep -o \"tour-\" /tmp/tourdash.html | head -5; echo \"---\"; grep -o \"Bienvenue sur votre espace\\\\|SkeletonDossierCard\\\\|__next\" /tmp/tourdash.html | head -5; wc -l /tmp/tourdash.html)",
+      "Read(//tmp/**)",
+      "Bash(PGPASSWORD=0000 psql -h localhost -U postgres -d preenrollment -c \"DELETE FROM utilisateurs WHERE email = 'tour-test@example.com';\")"
+    ],
+    "additionalDirectories": [
+      "c:\\Projects\\Preinscription\\preenrollment\\app\\(supervisor)\\supervisor\\dossiers",
+      "c:\\Projects\\Preinscription\\preenrollment\\app\\api\\admin\\annees",
+      "c:\\Projects\\Preinscription\\preenrollment\\app\\api\\filieres\\[id]"
+    ]
+  }
+}

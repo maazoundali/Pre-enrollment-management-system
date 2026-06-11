@@ -1,0 +1,513 @@
+// prisma/schema.prisma
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ENUMS
+// ═════════════════════════════════════════════════════════════════════════════
+
+enum Role {
+  ETUDIANT
+  ADMINISTRATEUR
+  SUPERVISEUR
+}
+
+enum Statut {
+  BROUILLON
+  SOUMIS
+  EN_ANALYSE
+  VALIDE
+  REJETE
+  LISTE_ATTENTE
+}
+
+enum TypeNotif {
+  DOSSIER_INCOMPLET
+  RECOMMANDATION
+  DECISION_ADMIN
+  STATUT_MAJ
+  DOSSIER_MAJ
+}
+
+enum TypeDoc {
+  CNI
+  PASSEPORT
+  DIPLOME
+  RELEVE_NOTES
+  PHOTO
+  AUTRE
+}
+
+/// Type of identity document — determines which number field is relevant
+enum TypeIdentite {
+  CIN       // Carte d'identité nationale (Tunisian)
+  PASSEPORT // Passport (foreign students)
+}
+
+/// Gender
+enum Sexe {
+  HOMME
+  FEMME
+  AUTRE
+}
+
+/// How the student discovered the institution
+enum SourceDecouverte {
+  AMIS
+  RESEAUX_SOCIAUX
+  SITE_WEB
+  PUBLICITE
+  SALON_ETUDIANT
+  AUTRE
+}
+
+/// Current study level of the student
+enum NiveauEtude {
+  BACCALAUREAT
+  LICENCE_1
+  LICENCE_2
+  LICENCE_3
+  MASTER_1
+  MASTER_2
+  DOCTORAT
+  AUTRE
+}
+
+/// Preferred course schedule
+enum TypeCours {
+  COURS_JOUR         // Full-time day classes
+  COURS_SOIR         // Evening classes (for working students)
+  FORMATION_CONTINUE // Continuing professional education
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// UTILISATEUR
+// ═════════════════════════════════════════════════════════════════════════════
+
+model Utilisateur {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  motDePasse   String
+  role         Role
+  dateCreation DateTime @default(now())
+
+  // ── Identity (student) ────────────────────────────────────────────────────
+  nom           String?
+  prenom        String?
+  dateNaissance DateTime?
+
+  /// CIN or Passport — mutually exclusive, stored in one field
+  typeIdentite    TypeIdentite?
+  numeroIdentite  String?        @unique  // CIN number OR passport number
+
+  // ── Profile info (not required at register, filled in later) ──────────────
+  /// Gender — part of the student profile, not the application
+  sexe      Sexe?
+
+  /// Full home / mailing address
+  adresse   String?
+
+  /// Country of residence (free text, e.g. "Tunisie", "France")
+  pays      String?
+
+  /// Mobile / phone number
+  telephone String?
+
+  // ── Admin-only fields ─────────────────────────────────────────────────────
+  departement String?
+
+  // ── Supervisor-only fields ────────────────────────────────────────────────
+  niveauAcces Int?
+
+  // ── RGPD ─────────────────────────────────────────────────────────────────
+  consentementRGPD Boolean @default(false)
+
+  // ── Email confirmation (sent at signup, fake SMTP in dev) ─────────────────
+  emailVerifie Boolean @default(false)
+
+  // ── Avatar (set automatically when PHOTO document is uploaded) ────────────
+  avatarUrl String?
+
+  // ── Relations ─────────────────────────────────────────────────────────────
+  dossiers           Dossier[]
+  filieres           AdminFiliere[]
+  notifications      Notification[]
+  rapports           Rapport[]
+  notesInternes      NoteInterne[]
+  auditLogs          AuditLog[]
+  passwordResets     PasswordReset[]
+  emailVerifications EmailVerification[]
+
+  @@index([email])
+  @@index([role])
+  @@index([numeroIdentite])
+  @@map("utilisateurs")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// PASSWORD RESET
+// ═════════════════════════════════════════════════════════════════════════════
+
+model PasswordReset {
+  id        String    @id @default(uuid())
+  token     String    @unique
+  userId    String
+  user      Utilisateur @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@map("password_resets")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// EMAIL VERIFICATION
+// ═════════════════════════════════════════════════════════════════════════════
+
+model EmailVerification {
+  id        String    @id @default(uuid())
+  token     String    @unique
+  userId    String
+  user      Utilisateur @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@map("email_verifications")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ANNEE ACADEMIQUE
+// ═════════════════════════════════════════════════════════════════════════════
+
+model AnneeAcademique {
+  id            String    @id @default(uuid())
+  libelle       String    @unique   // e.g. "2025-2026"
+  active        Boolean   @default(false)
+  archivee      Boolean   @default(false)
+  dateOuverture DateTime?           // enrollment opens; null = always open
+  dateFermeture DateTime?           // enrollment closes; null = no deadline
+  dateCreation  DateTime  @default(now())
+
+  dossiers  Dossier[]
+  capacites FiliereCapacite[]
+
+  @@index([active])
+  @@map("annees_academiques")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// FILIERE
+// ═════════════════════════════════════════════════════════════════════════════
+
+model Filiere {
+  id          String  @id @default(uuid())
+  nom         String  @unique
+  description String?
+
+  /// Detailed curriculum / study programme overview
+  programme        String?
+
+  /// Duration of the programme (e.g. "3 ans", "18 mois")
+  duree            String?
+
+  /// Diploma awarded upon completion (e.g. "Licence", "Master", "Ingénieur")
+  diplomeDelivre   String?
+
+  /// Language of instruction (e.g. "Français", "Anglais", "Arabe")
+  langue           String?
+
+  /// Annual registration / tuition fees
+  fraisInscription Float?
+
+  /// Explicit category for grouping in the UI (preparatoire | ingenierie | licence | master | architecture)
+  categorie        String?
+
+  dossiers   Dossier[]
+  admins     AdminFiliere[]
+  recommande AnalyseFiliere[]
+  capacites  FiliereCapacite[]
+
+  @@index([nom])
+  @@map("filieres")
+}
+
+// Per-filière, per-year capacity quota
+model FiliereCapacite {
+  id        String @id @default(uuid())
+  filiereId String
+  anneeId   String
+  capacite  Int                     // hard limit: max VALIDE dossiers
+  objectif  Int?                    // soft target for planning/analytics only
+
+  filiere   Filiere         @relation(fields: [filiereId], references: [id], onDelete: Cascade)
+  annee     AnneeAcademique @relation(fields: [anneeId],   references: [id], onDelete: Cascade)
+
+  @@unique([filiereId, anneeId])
+  @@index([anneeId])
+  @@map("filiere_capacites")
+}
+
+model AdminFiliere {
+  administrateurId String
+  filiereId        String
+
+  administrateur Utilisateur @relation(fields: [administrateurId], references: [id], onDelete: Cascade)
+  filiere        Filiere     @relation(fields: [filiereId], references: [id], onDelete: Cascade)
+
+  @@id([administrateurId, filiereId])
+  @@map("admin_filieres")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// DOSSIER  — application-specific data only
+// ═════════════════════════════════════════════════════════════════════════════
+
+model Dossier {
+  id           String   @id @default(uuid())
+  dateCreation DateTime @default(now())
+  dateMaj      DateTime @updatedAt
+  statut       Statut   @default(BROUILLON)
+  score        Float?
+
+  // ── Ownership ─────────────────────────────────────────────────────────────
+  etudiantId String
+  etudiant   Utilisateur @relation(fields: [etudiantId], references: [id], onDelete: Cascade)
+
+  filiereId String?
+  filiere   Filiere? @relation(fields: [filiereId], references: [id])
+
+  anneeId String
+  annee   AnneeAcademique @relation(fields: [anneeId], references: [id])
+
+  // ── Academic background (application-specific) ────────────────────────────
+  /// Title of the last diploma obtained (e.g. "Baccalauréat Scientifique")
+  dernierDiplome String?
+
+  /// Year the last diploma was obtained
+  anneeDiplome   Int?
+
+  /// Target diploma the student is applying for
+  diplomeVise    String?
+
+  /// Current academic level
+  niveauEtude    NiveauEtude?
+
+  /// Preferred course schedule for this application
+  typeCours      TypeCours?
+
+  /// How the student discovered the institution (captured per application)
+  sourceDecouverte SourceDecouverte?
+
+  /// Student grades — flexible JSON per diploma type
+  /// Bac: { math, physique, svt, francais, arabe, informatique, anglais, moyenne }
+  /// Licence/Master: { moyenne }
+  notes            Json?
+
+  /// Reason provided by admin when rejecting — displayed to the student
+  motifRejet       String?
+
+  /// Position in waitlist (1 = next to be admitted), null if not waitlisted
+  rangListeAttente Int?
+
+  // ── Relations ─────────────────────────────────────────────────────────────
+  documents     Document[]
+  analyses      Analyse[]
+  notesInternes NoteInterne[]
+  auditLogs     AuditLog[]
+  diplomes      Diplome[]
+
+  @@index([etudiantId])
+  @@index([anneeId])
+  @@index([statut])
+  @@index([filiereId])
+  @@index([anneeId, statut])
+  @@index([anneeId, filiereId, statut])
+  @@index([etudiantId, anneeId])
+  @@index([niveauEtude])
+  @@index([typeCours])
+  @@map("dossiers")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// DOCUMENT
+// ═════════════════════════════════════════════════════════════════════════════
+
+model Document {
+  id         String   @id @default(uuid())
+  type       TypeDoc
+  nom        String
+  url        String
+  dateUpload DateTime @default(now())
+
+  /// Admin verification status: null = not yet reviewed
+  verification      VerificationDoc?
+  verificationNote  String?           // admin comment (reason for rejection, etc.)
+  verifiedAt        DateTime?
+  verifiedBy        String?           // admin user id
+
+  dossierId String
+  dossier   Dossier @relation(fields: [dossierId], references: [id], onDelete: Cascade)
+
+  @@index([dossierId])
+  @@index([type])
+  @@map("documents")
+}
+
+enum VerificationDoc {
+  VERIFIED       // ✓ accepted
+  REJECTED       // ✗ rejected — needs correction
+  NEEDS_REUPLOAD // ⚠ readable but student should re-upload better quality
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// NOTIFICATION
+// ═════════════════════════════════════════════════════════════════════════════
+
+model Notification {
+  id        String    @id @default(uuid())
+  type      TypeNotif
+  message   String
+  dateEnvoi DateTime  @default(now())
+  lu        Boolean   @default(false)
+
+  destinataireId String
+  destinataire   Utilisateur @relation(fields: [destinataireId], references: [id], onDelete: Cascade)
+
+  @@index([destinataireId])
+  @@index([destinataireId, lu])
+  @@map("notifications")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ANALYSE
+// ═════════════════════════════════════════════════════════════════════════════
+
+model Analyse {
+  id          String   @id @default(uuid())
+  dateAnalyse DateTime @default(now())
+  score       Float
+  resultat    String
+  complet     Boolean
+
+  dossierId String
+  dossier   Dossier @relation(fields: [dossierId], references: [id], onDelete: Cascade)
+
+  filiereRecommandations AnalyseFiliere[]
+
+  @@index([dossierId])
+  @@map("analyses")
+}
+
+model AnalyseFiliere {
+  analyseId String
+  filiereId String
+  rang      Int
+
+  analyse Analyse @relation(fields: [analyseId], references: [id], onDelete: Cascade)
+  filiere Filiere @relation(fields: [filiereId], references: [id])
+
+  @@id([analyseId, filiereId])
+  @@map("analyse_filieres")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// NOTE INTERNE — private admin notes on a dossier, never shown to students
+// ═════════════════════════════════════════════════════════════════════════════
+
+model NoteInterne {
+  id           String   @id @default(uuid())
+  contenu      String
+  dateCreation DateTime @default(now())
+
+  auteurId  String
+  auteur    Utilisateur @relation(fields: [auteurId], references: [id])
+
+  dossierId String
+  dossier   Dossier @relation(fields: [dossierId], references: [id], onDelete: Cascade)
+
+  @@index([dossierId])
+  @@map("notes_internes")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// DIPLOME — multiple diplomas per dossier
+// ═════════════════════════════════════════════════════════════════════════════
+
+model Diplome {
+  id            String  @id @default(uuid())
+  intitule      String  // free-text title or resolved from type+sousType
+  annee         Int     // year obtained
+  etablissement String? // optional institution
+
+  // Structured type system (optional — used for dynamic field rendering)
+  type          String? // e.g. "BAC", "LICENCE", "MASTER", "BTS", "DOCTORAT"
+  sousType      String? // e.g. "SCIENTIFIQUE", "LETTRES", "TECHNIQUE", "MATHS_INFO"
+  champs        Json?   // dynamic fields: { math: 18.5, physique: 16, specialite: "Info" … }
+
+  dossierId String
+  dossier   Dossier @relation(fields: [dossierId], references: [id], onDelete: Cascade)
+
+  @@index([dossierId])
+  @@map("diplomes")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// AUDIT LOG — immutable record of every admin action on a dossier
+// ═════════════════════════════════════════════════════════════════════════════
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  action     String   // e.g. "STATUT_CHANGE", "NOTE_ADDED", "ANALYSE_RUN", "DOCUMENT_UPLOADED"
+  details    Json?    // structured context: { from, to, motif, score, fileName, ... }
+  dateAction DateTime @default(now())
+
+  auteurId  String
+  auteur    Utilisateur @relation(fields: [auteurId], references: [id])
+
+  dossierId String
+  dossier   Dossier @relation(fields: [dossierId], references: [id], onDelete: Cascade)
+
+  @@index([dossierId])
+  @@index([auteurId])
+  @@index([dateAction])
+  @@map("audit_logs")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// PARAMETRES SYSTEME — global admin settings (enrollment period, etc.)
+// ═════════════════════════════════════════════════════════════════════════════
+
+model ParametreSysteme {
+  cle    String @id  // e.g. "inscription_debut", "inscription_fin", "inscription_active"
+  valeur String      // ISO date string or "true"/"false"
+
+  @@map("parametres_systeme")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// RAPPORT
+// ═════════════════════════════════════════════════════════════════════════════
+
+model Rapport {
+  id             String   @id @default(uuid())
+  titre          String
+  periodeDebut   DateTime
+  periodeFin     DateTime
+  dateGeneration DateTime @default(now())
+  contenu        Json
+
+  superviseurId String
+  superviseur   Utilisateur @relation(fields: [superviseurId], references: [id])
+
+  @@index([superviseurId])
+  @@index([dateGeneration])
+  @@map("rapports")
+}
